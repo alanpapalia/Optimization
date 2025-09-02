@@ -267,6 +267,127 @@ namespace Optimization
           throw std::invalid_argument("Target superlinear convergence rate parameter "
                                       "(theta) must be a nonnegative real number");
       }
+
+      template <typename Scalar>
+      void print_header(const TNTParams<Scalar> &params)
+      {
+        if (params.verbose)
+        {
+          std::cout << std::scientific;
+          std::cout.precision(params.precision);
+          std::cout << "Truncated-Newton trust-region optimization: " << std::endl
+                    << std::endl;
+        }
+      }
+
+      template <typename Scalar>
+      void print_iteration(const TNTParams<Scalar> &params, size_t iteration, double elapsed_time, Scalar fx, Scalar gradfx_norm, Scalar preconditioned_gradfx_norm, size_t iter_field_width)
+      {
+        if (params.verbose)
+        {
+          std::cout << "Iter: ";
+          std::cout.width(iter_field_width);
+          std::cout << iteration << ", time: " << elapsed_time << ", f: ";
+          std::cout.width(params.precision + 7);
+          std::cout << fx << ", |g|: " << gradfx_norm
+                    << ", |M^{-1}g|: " << preconditioned_gradfx_norm;
+        }
+      }
+
+      template <typename Scalar>
+      void print_step(const TNTParams<Scalar> &params, Scalar Delta, size_t inner_iterations, Scalar h_norm, Scalar h_M_norm, size_t inner_iter_field_width)
+      {
+        if (params.verbose)
+        {
+          std::cout << ", Delta: " << Delta << ", inner iters: ";
+          std::cout.width(inner_iter_field_width);
+          std::cout << inner_iterations << ", |h|: " << h_norm
+                    << ", |h|_M: " << h_M_norm;
+        }
+      }
+
+      template <typename Scalar>
+      void print_update(const TNTParams<Scalar> &params, Scalar df, Scalar rho, bool step_accepted)
+      {
+        if (params.verbose)
+        {
+          std::cout << ", df: ";
+          std::cout.width(params.precision + 7);
+          std::cout << df << ", rho: ";
+          std::cout.width(params.precision + 7);
+          std::cout << rho << ". ";
+          std::cout << (step_accepted ? "Step accepted" : "Step REJECTED!");
+          std::cout << std::endl;
+        }
+      }
+
+      template <typename Variable, typename Scalar>
+      void print_footer(const TNTParams<Scalar> &params, const TNTResult<Variable, Scalar> &result, Scalar relative_decrease, Scalar h_norm, Scalar Delta)
+      {
+        if (params.verbose)
+        {
+          std::cout << std::endl
+                    << std::endl
+                    << "Optimization finished!" << std::endl;
+
+          // Print the reason for termination
+          switch (result.status)
+          {
+          case TNTStatus::Gradient:
+            std::cout << "Found first-order critical point! (Gradient norm: "
+                      << result.gradfx_norm << ")" << std::endl;
+            break;
+          case TNTStatus::PreconditionedGradient:
+            std::cout << "Found first-order critical point! (Preconditioned "
+                         "gradient norm: "
+                      << result.preconditioned_grad_f_x_norm << ")" << std::endl;
+            break;
+          case TNTStatus::RelativeDecrease:
+            std::cout
+                << "Algorithm terminated due to insufficient relative decrease: "
+                << relative_decrease << " < " << params.relative_decrease_tolerance
+                << std::endl;
+            break;
+          case TNTStatus::Stepsize:
+            std::cout
+                << "Algorithm terminated due to excessively small step size: |h| = "
+                << h_norm << " < " << params.stepsize_tolerance << std::endl;
+            break;
+          case TNTStatus::TrustRegion:
+            std::cout << "Algorithm terminated due to excessively small trust region "
+                         "radius: "
+                      << Delta << " < " << params.Delta_tolerance << std::endl;
+            break;
+          case TNTStatus::IterationLimit:
+            std::cout << "Algorithm exceeded maximum number of outer iterations"
+                      << std::endl;
+            break;
+          case TNTStatus::ElapsedTime:
+            std::cout << "Algorithm exceeded maximum allowed computation time: ("
+                      << result.elapsed_time << " > " << params.max_computation_time
+                      << " seconds)" << std::endl;
+            break;
+          case TNTStatus::UserFunction:
+            std::cout
+                << "Algorithm terminated due to user-supplied stopping criterion"
+                << std::endl;
+            break;
+          }
+
+          std::cout << "Final objective value: " << result.f << std::endl;
+          std::cout << "Norm of Riemannian gradient: " << result.gradfx_norm
+                    << std::endl;
+          std::cout << "Norm of preconditioned Riemannian gradient: "
+                    << result.preconditioned_grad_f_x_norm << std::endl;
+          std::cout << "Total elapsed computation time: " << result.elapsed_time
+                    << " seconds" << std::endl
+                    << std::endl;
+
+          // Reset std::cout output stream to default display parameters
+          std::cout << std::defaultfloat;
+          std::cout.precision(6);
+        }
+      }
     }
 
     /** This function implements a Riemannian truncated-Newton trust-region method,
@@ -452,14 +573,7 @@ namespace Optimization
       // Initialize trust-region radius
       Delta = params.Delta0;
 
-      if (params.verbose)
-      {
-        // Set display options for real-valued quantities
-        std::cout << std::scientific;
-        std::cout.precision(params.precision);
-        std::cout << "Truncated-Newton trust-region optimization: " << std::endl
-                  << std::endl;
-      }
+      internal::print_header(params);
 
       // Start clock
       auto start_time = Stopwatch::tick();
@@ -488,15 +602,7 @@ namespace Optimization
         if (params.log_iterates)
           result.iterates.push_back(x);
 
-        if (params.verbose)
-        {
-          std::cout << "Iter: ";
-          std::cout.width(iter_field_width);
-          std::cout << iteration << ", time: " << elapsed_time << ", f: ";
-          std::cout.width(params.precision + 7);
-          std::cout << fx << ", |g|: " << gradfx_norm
-                    << ", |M^{-1}g|: " << preconditioned_gradfx_norm;
-        }
+        internal::print_iteration(params, iteration, elapsed_time, fx, gradfx_norm, preconditioned_gradfx_norm, iter_field_width);
 
         // Test gradient-based stopping criterion
         if (gradfx_norm < params.gradient_tolerance)
@@ -522,13 +628,7 @@ namespace Optimization
             params.max_TPCG_iterations, params.kappa_fgr, params.theta, Pop);
         h_norm = sqrt(metric(x, h, h, args...));
 
-        if (params.verbose)
-        {
-          std::cout << ", Delta: " << Delta << ", inner iters: ";
-          std::cout.width(inner_iter_field_width);
-          std::cout << inner_iterations << ", |h|: " << h_norm
-                    << ", |h|_M: " << h_M_norm;
-        }
+        internal::print_step(params, Delta, inner_iterations, h_norm, h_M_norm, inner_iter_field_width);
 
         /// STEP 3:  Update and evaluate trial point
 
@@ -551,20 +651,10 @@ namespace Optimization
         // Evaluate gain ratio
         Scalar rho = df / dm;
 
-        if (params.verbose)
-        {
-          std::cout << ", df: ";
-          std::cout.width(params.precision + 7);
-          std::cout << df << ", rho: ";
-          std::cout.width(params.precision + 7);
-          std::cout << rho << ". ";
-        }
-
         /// Determine acceptance of trial point
         bool step_accepted = (!std::isnan(rho) && rho > params.eta1);
 
-        if (params.verbose)
-          std::cout << (step_accepted ? "Step accepted" : "Step REJECTED!");
+        internal::print_update(params, df, rho, step_accepted);
 
         // Record output
         result.inner_iterations.push_back(inner_iterations);
@@ -652,8 +742,6 @@ namespace Optimization
           }
         } // trust-region update
 
-        if (params.verbose)
-          std::cout << std::endl;
       } // end trust-region iterations
       result.elapsed_time = Stopwatch::tock(start_time);
 
@@ -673,69 +761,7 @@ namespace Optimization
       if (params.log_iterates)
         result.iterates.push_back(x);
 
-      if (params.verbose)
-      {
-        std::cout << std::endl
-                  << std::endl
-                  << "Optimization finished!" << std::endl;
-
-        // Print the reason for termination
-        switch (result.status)
-        {
-        case TNTStatus::Gradient:
-          std::cout << "Found first-order critical point! (Gradient norm: "
-                    << gradfx_norm << ")" << std::endl;
-          break;
-        case TNTStatus::PreconditionedGradient:
-          std::cout << "Found first-order critical point! (Preconditioned "
-                       "gradient norm: "
-                    << preconditioned_gradfx_norm << ")" << std::endl;
-          break;
-        case TNTStatus::RelativeDecrease:
-          std::cout
-              << "Algorithm terminated due to insufficient relative decrease: "
-              << relative_decrease << " < " << params.relative_decrease_tolerance
-              << std::endl;
-          break;
-        case TNTStatus::Stepsize:
-          std::cout
-              << "Algorithm terminated due to excessively small step size: |h| = "
-              << h_norm << " < " << params.stepsize_tolerance << std::endl;
-          break;
-        case TNTStatus::TrustRegion:
-          std::cout << "Algorithm terminated due to excessively small trust region "
-                       "radius: "
-                    << Delta << " < " << params.Delta_tolerance << std::endl;
-          break;
-        case TNTStatus::IterationLimit:
-          std::cout << "Algorithm exceeded maximum number of outer iterations"
-                    << std::endl;
-          break;
-        case TNTStatus::ElapsedTime:
-          std::cout << "Algorithm exceeded maximum allowed computation time: ("
-                    << result.elapsed_time << " > " << params.max_computation_time
-                    << " seconds)" << std::endl;
-          break;
-        case TNTStatus::UserFunction:
-          std::cout
-              << "Algorithm terminated due to user-supplied stopping criterion"
-              << std::endl;
-          break;
-        }
-
-        std::cout << "Final objective value: " << result.f << std::endl;
-        std::cout << "Norm of Riemannian gradient: " << result.gradfx_norm
-                  << std::endl;
-        std::cout << "Norm of preconditioned Riemannian gradient: "
-                  << result.preconditioned_grad_f_x_norm << std::endl;
-        std::cout << "Total elapsed computation time: " << result.elapsed_time
-                  << " seconds" << std::endl
-                  << std::endl;
-
-        // Reset std::cout output stream to default display parameters
-        std::cout << std::defaultfloat;
-        std::cout.precision(6);
-      }
+      internal::print_footer(params, result, relative_decrease, h_norm, Delta);
 
       return result;
     }
