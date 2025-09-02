@@ -72,6 +72,10 @@ namespace Optimization
                            Scalar Delta, size_t num_STPCG_iters, const Tangent &h,
                            Scalar df, Scalar rho, bool accepted, Args &...args)>;
 
+    template <typename Variable, typename... Args>
+    using SeparableStructureUpdate =
+        std::function<Variable(const Variable &x, Args &...args)>;
+
     /** A lightweight struct containing a few additional algorithm-specific
      * configuration parameters for a truncated-Newton trust-region method
      * (cf. Algorithm 6.1.1 of "Trust-Region Methods") */
@@ -198,7 +202,8 @@ namespace Optimization
       std::vector<Scalar> trust_region_radius;
     };
 
-    namespace internal {
+    namespace internal
+    {
       template <typename Scalar>
       void check_params(const TNTParams<Scalar> &params)
       {
@@ -322,7 +327,9 @@ namespace Optimization
             std::nullopt,
         const TNTParams<Scalar> &params = TNTParams<Scalar>(),
         const std::optional<TNTUserFunction<Variable, Tangent, Scalar, Args...>>
-            &user_function = std::nullopt)
+            &user_function = std::nullopt,
+        const std::optional<SeparableStructureUpdate<Variable, Args...>>
+            &separable_update = std::nullopt)
     {
 
       /// Argument checking
@@ -585,6 +592,12 @@ namespace Optimization
           x = std::move(x_proposed);
           fx = fx_proposed;
 
+          if (separable_update)
+          {
+            x = (*separable_update)(x, args...);
+            fx = f(x, args...);
+          }
+
           // Test relative decrease-based stopping criterion
           if (relative_decrease < params.relative_decrease_tolerance)
           {
@@ -754,7 +767,9 @@ namespace Optimization
             std::nullopt,
         const TNTParams<Scalar> &params = TNTParams<Scalar>(),
         const std::optional<TNTUserFunction<Variable, Tangent, Scalar, Args...>>
-            &user_function = std::nullopt)
+            &user_function = std::nullopt,
+        const std::optional<SeparableStructureUpdate<Variable, Args...>>
+            &separable_update = std::nullopt)
     {
 
       // Construct a QuadraticModel function from the passed VectorField and
@@ -773,7 +788,7 @@ namespace Optimization
 
       // Now call TNT using this QuadraticModel function
       return TNT<Variable, Tangent, Scalar, Args...>(
-          f, QM, metric, retract, x0, args..., precon, params, user_function);
+          f, QM, metric, retract, x0, args..., precon, params, user_function, separable_update);
     }
 
     /** These next functions provide a convenient specialization/simplification of
@@ -795,6 +810,10 @@ namespace Optimization
     using EuclideanTNTUserFunction =
         TNTUserFunction<Vector, Vector, Scalar, Args...>;
 
+    template <typename Vector, typename... Args>
+    using EuclideanSeparableStructureUpdate =
+        SeparableStructureUpdate<Vector, Args...>;
+
     template <typename Vector, typename Scalar = double, typename... Args>
     TNTResult<Vector, Scalar> EuclideanTNT(
         const Objective<Vector, Scalar, Args...> &f,
@@ -804,14 +823,16 @@ namespace Optimization
             std::nullopt,
         const TNTParams<Scalar> &params = TNTParams<Scalar>(),
         const std::optional<EuclideanTNTUserFunction<Vector, Scalar, Args...>>
-            &user_function = std::nullopt)
+            &user_function = std::nullopt,
+        const std::optional<EuclideanSeparableStructureUpdate<Vector, Args...>>
+            &separable_update = std::nullopt)
     {
 
       /// Run TNT algorithm using these Euclidean operators
       return TNT<Vector, Vector, Scalar, Args...>(
           f, QM, EuclideanMetric<Vector, Scalar, Args...>,
           EuclideanRetraction<Vector, Args...>, x0, args..., precon, params,
-          user_function);
+          user_function, separable_update);
     }
 
     /** Syntactic sugar: enables the user to supply separate functions that return
@@ -828,7 +849,9 @@ namespace Optimization
             std::nullopt,
         const TNTParams<Scalar> &params = TNTParams<Scalar>(),
         const std::optional<EuclideanTNTUserFunction<Vector, Scalar, Args...>>
-            &user_function = std::nullopt)
+            &user_function = std::nullopt,
+        const std::optional<EuclideanSeparableStructureUpdate<Vector, Args...>>
+            &separable_update = std::nullopt)
     {
 
       EuclideanQuadraticModel<Vector, Args...> QM =
@@ -845,7 +868,7 @@ namespace Optimization
 
       // Now call EuclideanTNT using this QuadraticModel function
       return EuclideanTNT<Vector, Scalar, Args...>(f, QM, x0, args..., precon,
-                                                   params, user_function);
+                                                   params, user_function, separable_update);
     }
 
   } // namespace Riemannian
