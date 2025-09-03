@@ -74,7 +74,7 @@ namespace Optimization
 
     template <typename Variable, typename... Args>
     using SeparableStructureUpdate =
-        std::function<Variable(const Variable &x, Args &...args)>;
+        std::function<void(Variable &x, Args &...args)>;
 
     /** A lightweight struct containing a few additional algorithm-specific
      * configuration parameters for a truncated-Newton trust-region method
@@ -684,7 +684,7 @@ namespace Optimization
 
           if (separable_update)
           {
-            x = (*separable_update)(x, args...);
+            (*separable_update)(x, args...);
             fx = f(x, args...);
           }
 
